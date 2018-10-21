@@ -18,7 +18,7 @@ export default (loggerFactory: LoggerFactory, rxGapi: RxGoogleAPI) => {
         }),
         // Authorize a client with credentials, then call the Google Drive API.
         flatMap(credentials => rxGapi.authorize(JSON.parse(credentials))),
-        flatMap(oAuth2Client => rxGapi.rxDrive$Files$List(oAuth2Client, 7)),
+        flatMap(oAuth2Client => rxGapi.listDriveFilesAll(oAuth2Client, 3)),
         map(file => logger.info(`file: ${file}`))
     );
 

@@ -28,7 +28,8 @@ interface ClientCredentials {
 
 export interface RxGoogleAPI {
     authorize: (clientCredentials: ClientCredentials) => Observable<OAuth2Client>;
-    rxDrive$Files$List: (auth: OAuth2Client, pageSize: number) => Observable<drive_v3.Schema$File>;
+    listDriveFilesPageful: (auth: OAuth2Client, pageSize: number) => Observable<drive_v3.Schema$File>;
+    listDriveFilesAll: (auth: OAuth2Client, pageSize: number) => Observable<drive_v3.Schema$File>;
 }
 
 const getAccessToken: (loggerFactory: LoggerFactory, oAuth2Client: OAuth2Client) => Observable<Credentials>
@@ -58,36 +59,18 @@ const getAccessToken: (loggerFactory: LoggerFactory, oAuth2Client: OAuth2Client)
 });
 
 const rxGoogleAPI: (loggerFactory: LoggerFactory) => RxGoogleAPI
-= loggerFactory => ({
-    authorize: clientCredentials => {
-        const logger = loggerFactory("authorize");
-        const { client_secret, client_id, redirect_uris } = clientCredentials.installed;
-        const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
-        return fileExists(TOKEN_PATH)
-        .pipe(
-            flatMap(exists => exists
-                ? readTextFile(TOKEN_PATH)
-                : getAccessToken(loggerFactory, oAuth2Client)
-                    .pipe(
-                        map(token => JSON.stringify(token)),
-                        flatMap(token => writeTextFile(TOKEN_PATH, token)
-                            .pipe(
-                                tap(() => logger.info(`Token stored to ${TOKEN_PATH}`)),
-                                mapTo(token)
-                            ))
-                    )
-            ),
-            map(token => {
-                oAuth2Client.setCredentials(JSON.parse(token));
-                return oAuth2Client;
-            })
-        );
-    },
+= loggerFactory => {
 
-    rxDrive$Files$List: (auth, pageSize) => Observable.create((observer: Observer<drive_v3.Schema$File>) => {
+    const listDriveFilesMaybeRecurse = (
+        drive: drive_v3.Drive,
+        pageToken: string,
+        pageSize: number,
+        recurse: boolean,
+        observer: Observer<drive_v3.Schema$File>
+    ) => {
         const logger = loggerFactory("rxDrive$Files$List");
-        const drive = google.drive({version: "v3", auth});
         drive.files.list({
+            pageToken,
             pageSize
         }, (err, res) => {
             if (err) {
@@ -101,15 +84,51 @@ const rxGoogleAPI: (loggerFactory: LoggerFactory) => RxGoogleAPI
                     logger.info(`${file.name} (${file.id})`);
                     observer.next(file);
                 });
-            } else {
-                logger.info("No files found.");
             }
-            const npToken: string = res.data.nextPageToken;
 
-            observer.complete();
+            const nextPageToken = res.data.nextPageToken;
+            if (recurse && nextPageToken) {
+                listDriveFilesMaybeRecurse(drive, nextPageToken, pageSize, recurse, observer);
+            } else {
+                observer.complete();
+            }
         });
+    };
 
-    })
-});
+    return {
+        authorize: clientCredentials => {
+            const logger = loggerFactory("authorize");
+            const { client_secret, client_id, redirect_uris } = clientCredentials.installed;
+            const oAuth2Client = new google.auth.OAuth2(client_id, client_secret, redirect_uris[0]);
+            return fileExists(TOKEN_PATH)
+            .pipe(
+                flatMap(exists => exists
+                    ? readTextFile(TOKEN_PATH)
+                    : getAccessToken(loggerFactory, oAuth2Client)
+                        .pipe(
+                            map(token => JSON.stringify(token)),
+                            flatMap(token => writeTextFile(TOKEN_PATH, token)
+                                .pipe(
+                                    tap(() => logger.info(`Token stored to ${TOKEN_PATH}`)),
+                                    mapTo(token)
+                                ))
+                        )
+                ),
+                map(token => {
+                    oAuth2Client.setCredentials(JSON.parse(token));
+                    return oAuth2Client;
+                })
+            );
+        },
+        listDriveFilesAll: (auth, pageSize) => Observable.create((observer: Observer<drive_v3.Schema$File>) => {
+            const drive = google.drive({version: "v3", auth});
+            return listDriveFilesMaybeRecurse(drive, void 0, pageSize, true, observer);
+        }),
+        listDriveFilesPageful: (auth, pageSize) => Observable.create((observer: Observer<drive_v3.Schema$File>) => {
+            const drive = google.drive({version: "v3", auth});
+            return listDriveFilesMaybeRecurse(drive, void 0, pageSize, false, observer);
+        })
+    };
+};
 
 export default rxGoogleAPI;

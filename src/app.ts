@@ -15,7 +15,7 @@ logger.info("Logger factory created");
 
 main(loggerFactory, rxGapi(loggerFactory))
 .subscribe(
-    result => logger.info(`Application result: ${result}`),
+    void 0,
     error => logger.error(error),
     void 0
 );
