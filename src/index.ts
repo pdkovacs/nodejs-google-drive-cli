@@ -1,12 +1,12 @@
 import * as path from "path";
 
 import { LoggerFactory } from "./logger";
-
-import { RxUtils } from "./rx-utils";
-import { catchError, map, flatMap, tap } from "rxjs/operators";
+import * as rxUtils from "./rx-utils";
+import { RxGoogleAPI } from "./rx-google-api";
+import { catchError, map, flatMap } from "rxjs/operators";
 import { Observable } from "rxjs";
 
-export default (loggerFactory: LoggerFactory, rxUtils: RxUtils) => {
+export default (loggerFactory: LoggerFactory, rxGapi: RxGoogleAPI) => {
     const logger = loggerFactory("index");
 
     // Load client secrets from a local file.
@@ -17,8 +17,8 @@ export default (loggerFactory: LoggerFactory, rxUtils: RxUtils) => {
             return Observable.throw(err);
         }),
         // Authorize a client with credentials, then call the Google Drive API.
-        flatMap(credentials => rxUtils.authorize(JSON.parse(credentials))),
-        flatMap(oAuth2Client => rxUtils.rxDrive$Files$List(oAuth2Client, 7)),
+        flatMap(credentials => rxGapi.authorize(JSON.parse(credentials))),
+        flatMap(oAuth2Client => rxGapi.rxDrive$Files$List(oAuth2Client, 7)),
         map(file => logger.info(`file: ${file}`))
     );
 
