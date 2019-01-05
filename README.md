@@ -1,1 +1,1 @@
-# nodejs-google-drive-cli
+# A NodeJS-based Google Drive client
